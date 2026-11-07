@@ -231,8 +231,8 @@ class TestBuildIcs(unittest.TestCase):
         self.assertEqual(ics.count("END:VEVENT"), 2)
         self.assertIn("SUMMARY:US HIGH-IMPACT NEWS TODAY", ics)
         self.assertIn("Today's upcoming releases (Ireland time)", ics)
-        self.assertIn("09:30 — CPI m/m", ics)
-        self.assertIn("09:30 — Non-Farm Employment Change", ics)
+        self.assertIn("13:30 — CPI m/m", ics)
+        self.assertIn("13:30 — Non-Farm Employment Change", ics)
         self.assertIn("19:00 — FOMC Statement", ics)
 
     def test_reminder_is_at_0800_ireland_time(self):
