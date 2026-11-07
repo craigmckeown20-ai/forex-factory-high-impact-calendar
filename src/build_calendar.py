@@ -4,8 +4,9 @@ import hashlib
 import json
 import sys
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 # --- Settings you may want to change ---------------------------------------
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
@@ -13,8 +14,8 @@ COUNTRIES = {"USD"}  # e.g. {"USD", "EUR"}
 IMPACTS = {"High"}  # feed values: "High", "Medium", "Low", "Holiday"
 KEEP_DAYS = 45  # how long past events stay in the calendar
 EVENT_MINUTES = 15  # length of each calendar entry
-CALENDAR_NAME = "USD High Impact"
-CALENDAR_DESCRIPTION = "High-impact USD economic events from the Forex Factory feed"
+CALENDAR_NAME = "USD News Check (08:00)"
+CALENDAR_DESCRIPTION = "08:00 Ireland-time reminders on days with upcoming high-impact USD news. Actual release times are listed in each reminder."
 USER_AGENT = "usd-high-impact-calendar/1.0"
 # ---------------------------------------------------------------------------
 
@@ -164,7 +165,22 @@ def fold_line(line: str) -> str:
     return "\r\n ".join(parts)
 
 
-def build_ics(events: dict[str, dict]) -> str:
+DUBLIN = ZoneInfo("Europe/Dublin")
+
+
+def build_ics(
+    events: dict[str, dict], now: datetime | None = None
+) -> str:
+    """Publish one 08:00 Ireland-time reminder for each day with future USD news."""
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    grouped: dict[date, list[dict]] = {}
+    for event in events.values():
+        release = datetime.fromisoformat(event["start"]).astimezone(timezone.utc)
+        if release <= now:
+            continue
+        local_release = release.astimezone(DUBLIN)
+        grouped.setdefault(local_release.date(), []).append(event)
+
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -176,30 +192,40 @@ def build_ics(events: dict[str, dict]) -> str:
         "REFRESH-INTERVAL;VALUE=DURATION:PT6H",
         "X-PUBLISHED-TTL:PT6H",
     ]
-    for event in sorted(events.values(), key=lambda e: (e["start"], e["title"])):
-        start = datetime.fromisoformat(event["start"])
-        end = start + timedelta(minutes=EVENT_MINUTES)
-        details = []
-        if event.get("forecast"):
-            details.append(f"Forecast: {event['forecast']}")
-        if event.get("previous"):
-            details.append(f"Previous: {event['previous']}")
+    for local_day, day_events in sorted(grouped.items()):
+        reminder_start = datetime.combine(local_day, time(8, 0), tzinfo=DUBLIN)
+        reminder_end = reminder_start + timedelta(minutes=5)
+        details = [
+            "Check the US high-impact news schedule before deciding whether to trade London.",
+            "",
+            "Today's upcoming releases (Ireland time):",
+        ]
+        for event in sorted(day_events, key=lambda e: e["start"]):
+            release = datetime.fromisoformat(event["start"]).astimezone(DUBLIN)
+            details.append(f"- {release:%H:%M} — {event['title']}")
+            if event.get("forecast"):
+                details.append(f"  Forecast: {event['forecast']}")
+            if event.get("previous"):
+                details.append(f"  Previous: {event['previous']}")
+        details.append("")
         details.append("Source: Forex Factory, https://www.forexfactory.com/calendar")
-        description = escape_text("\n".join(details))
-        summary = escape_text(f"{event['country']}: {event['title']}")
+        description = escape_text("\\n".join(details))
+        summary = escape_text("US HIGH-IMPACT NEWS TODAY — CHECK BEFORE LONDON")
+        uid = f"usd-high-impact-reminder-{local_day:%Y%m%d}@usd-high-impact"
+        stamp = _utc(now)
         lines += [
             "BEGIN:VEVENT",
-            f"UID:{event['uid']}",
-            f"DTSTAMP:{event.get('stamp', _utc(start))}",
-            f"DTSTART:{_utc(start)}",
-            f"DTEND:{_utc(end)}",
+            f"UID:{uid}",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART:{_utc(reminder_start)}",
+            f"DTEND:{_utc(reminder_end)}",
             f"SUMMARY:{summary}",
             f"DESCRIPTION:{description}",
             "TRANSP:TRANSPARENT",
             "END:VEVENT",
         ]
     lines.append("END:VCALENDAR")
-    return "\r\n".join(fold_line(line) for line in lines) + "\r\n"
+    return "\\r\\n".join(fold_line(line) for line in lines) + "\\r\\n"
 
 
 REQUIRED_KEYS = ("uid", "country", "title", "start", "forecast", "previous")
