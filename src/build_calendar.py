@@ -4,12 +4,14 @@ import hashlib
 import json
 import sys
 import urllib.request
+from urllib.error import HTTPError
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 # --- Settings you may want to change ---------------------------------------
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+NEXT_WEEK_FEED_URL = "https://nfs.faireconomy.media/ff_calendar_nextweek.json"
 COUNTRIES = {"USD"}  # e.g. {"USD", "EUR"}
 IMPACTS = {"High"}  # feed values: "High", "Medium", "Low", "Holiday"
 KEEP_DAYS = 45  # how long past events stay in the calendar
@@ -262,22 +264,40 @@ def save_state(events: dict[str, dict], path: Path = STATE_FILE) -> None:
 def main() -> int:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     try:
-        feed = fetch_feed()
+        this_week = fetch_feed(FEED_URL)
     except (OSError, ValueError, TypeError) as exc:
         print(
-            f"ERROR: could not fetch feed, keeping the existing calendar: {exc}",
+            f"ERROR: could not fetch this week's feed, keeping the existing calendar: {exc}",
             file=sys.stderr,
         )
         return 1
 
-    window = feed_window(feed)
-    if window is None:
+    # Forex Factory's next-week JSON endpoint is not always published.
+    # Treat a missing next-week feed as optional; never fail the daily build
+    # or delete stored next-week entries just because the endpoint is absent.
+    next_week: list[dict] = []
+    next_week_available = False
+    try:
+        next_week = fetch_feed(NEXT_WEEK_FEED_URL)
+        next_week_available = bool(next_week)
+    except HTTPError as exc:
+        if exc.code != 404:
+            print(f"WARNING: next-week feed unavailable (HTTP {exc.code})", file=sys.stderr)
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"WARNING: next-week feed unavailable: {exc}", file=sys.stderr)
+
+    feed = this_week + next_week
+    windows = [w for w in (feed_window(this_week), feed_window(next_week)) if w]
+    if not windows:
         print(
-            "ERROR: feed had no dated events, keeping the existing calendar",
+            "ERROR: feeds had no dated events, keeping the existing calendar",
             file=sys.stderr,
         )
         return 1
 
+    # Only mark the next-week date range as authoritative when that feed
+    # actually returned data. This avoids deleting stored events on a 404.
+    window = (min(w[0] for w in windows), max(w[1] for w in windows))
     fresh, skipped = select_events(feed)
     merged = merge(load_state(), fresh, window, now)
 
@@ -287,8 +307,9 @@ def main() -> int:
 
     last_day = window[1] - timedelta(days=1)
     print(
-        f"Feed week {window[0]:%Y-%m-%d} to {last_day:%Y-%m-%d}: "
-        f"{len(fresh)} matching events, {len(merged)} in calendar, {skipped} skipped"
+        f"Feed coverage {window[0]:%Y-%m-%d} to {last_day:%Y-%m-%d}: "
+        f"{len(fresh)} matching events, {len(merged)} in calendar, {skipped} skipped; "
+        f"next-week feed: {'available' if next_week_available else 'not available'}"
     )
     return 0
 
