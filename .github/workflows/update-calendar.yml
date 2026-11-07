@@ -1,6 +1,12 @@
 name: Update calendar
 
 on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/build_calendar.py"
+      - "tests/**"
+      - ".github/workflows/update-calendar.yml"
   schedule:
     - cron: "15 5 * * *"
     - cron: "15 21 * * 0"
