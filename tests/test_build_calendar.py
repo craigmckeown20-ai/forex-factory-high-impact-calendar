@@ -185,7 +185,7 @@ class TestMerge(unittest.TestCase):
 
 class TestEscapeAndFold(unittest.TestCase):
     def test_escapes_special_characters(self):
-        self.assertEqual(bc.escape_text("a,b;c\\d\ne"), "a\\,b\\;c\\\\d\\ne")
+        self.assertEqual(bc.escape_text("a,b;c\\d\ne"), "a\\,b\\;c\\\\d\ne")
 
     def test_backslash_escaped_only_once(self):
         self.assertEqual(bc.escape_text("\\"), "\\\\")
@@ -255,11 +255,11 @@ class TestBuildIcs(unittest.TestCase):
 
     def test_structure_and_crlf(self):
         ics = self.build()
-        self.assertTrue(ics.startswith("BEGIN:VCALENDAR\\r\\n"))
-        self.assertTrue(ics.endswith("END:VCALENDAR\\r\\n"))
-        self.assertNotIn("\\n\\n", ics)
-        for line in ics.split("\\r\\n"):
-            self.assertNotIn("\\n", line)
+        self.assertTrue(ics.startswith("BEGIN:VCALENDAR\r\n"))
+        self.assertTrue(ics.endswith("END:VCALENDAR\r\n"))
+        self.assertNotIn("\n\n", ics)
+        for line in ics.split("\r\n"):
+            self.assertNotIn("\n", line)
 
     def test_empty_calendar_is_still_valid(self):
         ics = bc.build_ics({}, now=datetime(2026, 9, 24, 6, tzinfo=UTC))
