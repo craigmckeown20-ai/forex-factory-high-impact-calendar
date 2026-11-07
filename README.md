@@ -7,10 +7,10 @@ The full Forex Factory calendar has every currency and every impact level, which
 ## How it works
 
 1. A GitHub Actions workflow runs daily (05:15 UTC) and on Sunday evening.
-2. `src/build_calendar.py` downloads `ff_calendar_thisweek.json`, keeps `country == "USD"` and `impact == "High"`, and merges the result into `data/events.json`.
-3. It writes `docs/usd-high-impact.ics`, served by GitHub Pages.
+2. `src/build_calendar.py` downloads both `ff_calendar_thisweek.json` and `ff_calendar_nextweek.json` when the next-week endpoint is available, then keeps `country == "USD"` and `impact == "High"`.
+3. It merges the results into `data/events.json` and writes `docs/usd-high-impact.ics`, served by GitHub Pages.
 
-The feed only covers the current week, so the merge step keeps past weeks for 45 days. Events that disappear from the current week (cancelled or moved) are removed, so a rescheduled release replaces the old entry instead of leaving a duplicate behind.
+This provides a rolling outlook for this week and next week. Forex Factory does not always publish the next-week JSON endpoint (it can return 404), so the workflow treats it as optional: the current week still updates, and previously stored next-week entries are not deleted just because that endpoint is unavailable. The merge step also keeps past events for 45 days. When a feed is available, events that disappear from its covered date range are removed, so cancelled or moved releases do not leave stale duplicates.
 
 Standard library Python only (3.10+). No dependencies.
 
