@@ -216,37 +216,53 @@ class TestBuildIcs(unittest.TestCase):
             item(
                 "CPI m/m", "2026-09-24T08:30:00-04:00", forecast="0.3%", previous="0.2%"
             ),
-            item("Non-Farm Employment Change", "2026-09-25T08:30:00-04:00"),
+            item("Non-Farm Employment Change", "2026-09-24T08:30:00-04:00"),
+            item("FOMC Statement", "2026-09-25T14:00:00-04:00"),
+            item("Euro CPI", "2026-09-24T08:30:00-04:00", country="EUR"),
         ]
         events, _ = bc.select_events(feed)
-        merged = bc.merge(
-            {}, events, bc.feed_window(feed), datetime(2026, 9, 24, 6, tzinfo=UTC)
+        return bc.build_ics(
+            events, now=datetime(2026, 9, 24, 6, tzinfo=UTC)
         )
-        return bc.build_ics(merged)
+
+    def test_one_reminder_per_ireland_local_day(self):
+        ics = self.build()
+        self.assertEqual(ics.count("BEGIN:VEVENT"), 2)
+        self.assertEqual(ics.count("END:VEVENT"), 2)
+        self.assertIn("SUMMARY:US HIGH-IMPACT NEWS TODAY", ics)
+        self.assertIn("Today's upcoming releases (Ireland time)", ics)
+        self.assertIn("09:30 — CPI m/m", ics)
+        self.assertIn("09:30 — Non-Farm Employment Change", ics)
+        self.assertIn("19:00 — FOMC Statement", ics)
+
+    def test_reminder_is_at_0800_ireland_time(self):
+        ics = self.build()
+        # Ireland is on summer time (UTC+1) on 24-25 September 2026.
+        self.assertIn("DTSTART:20260924T070000Z", ics)
+        self.assertIn("DTEND:20260924T070500Z", ics)
+        self.assertIn("DTSTART:20260925T070000Z", ics)
+
+    def test_actual_release_times_are_not_event_start_times(self):
+        ics = self.build()
+        self.assertNotIn("DTSTART:20260924T123000Z", ics)
+        self.assertNotIn("DTSTART:20260925T180000Z", ics)
+
+    def test_events_on_same_day_are_grouped(self):
+        ics = self.build()
+        self.assertEqual(ics.count("SUMMARY:US HIGH-IMPACT NEWS TODAY"), 2)
+        self.assertEqual(ics.count("CPI m/m"), 1)
+        self.assertEqual(ics.count("Non-Farm Employment Change"), 1)
 
     def test_structure_and_crlf(self):
         ics = self.build()
-        self.assertTrue(ics.startswith("BEGIN:VCALENDAR\r\n"))
-        self.assertTrue(ics.endswith("END:VCALENDAR\r\n"))
-        self.assertEqual(ics.count("BEGIN:VEVENT"), 2)
-        self.assertEqual(ics.count("END:VEVENT"), 2)
-        self.assertNotIn("\n\n", ics)
-        for line in ics.split("\r\n"):
-            self.assertNotIn("\n", line)
-
-    def test_event_fields(self):
-        ics = self.build()
-        self.assertIn("DTSTART:20260924T123000Z", ics)
-        self.assertIn("DTEND:20260924T124500Z", ics)
-        self.assertIn("SUMMARY:USD: CPI m/m", ics)
-        self.assertIn("Forecast: 0.3%", ics)
-
-    def test_events_sorted_by_start(self):
-        ics = self.build()
-        self.assertLess(ics.index("20260924T123000Z"), ics.index("20260925T123000Z"))
+        self.assertTrue(ics.startswith("BEGIN:VCALENDAR\\r\\n"))
+        self.assertTrue(ics.endswith("END:VCALENDAR\\r\\n"))
+        self.assertNotIn("\\n\\n", ics)
+        for line in ics.split("\\r\\n"):
+            self.assertNotIn("\\n", line)
 
     def test_empty_calendar_is_still_valid(self):
-        ics = bc.build_ics({})
+        ics = bc.build_ics({}, now=datetime(2026, 9, 24, 6, tzinfo=UTC))
         self.assertIn("BEGIN:VCALENDAR", ics)
         self.assertNotIn("BEGIN:VEVENT", ics)
 
